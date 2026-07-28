@@ -3,26 +3,10 @@ workflows:
     name: Control Medidores - APK Debug
     max_build_duration: 30
     instance_type: linux_x2
-    vars:
-      PACKAGE_NAME: "com.controlmedidores.app"
-    triggering:
-      events:
-        - push
-      branches:
-        - main
     scripts:
-      - name: Generar wrapper de Gradle si falta
+      - name: Compilar APK nativo
         script: |
-          if [ ! -f ./gradlew ]; then
-            gradle wrapper --gradle-version 8.7
-          fi
           chmod +x ./gradlew
-      - name: Compilar APK debug
-        script: |
           ./gradlew assembleDebug
     artifacts:
       - app/build/outputs/**/*.apk
-    publishing:
-      email:
-        recipients:
-          - tu-correo@ejemplo.com
