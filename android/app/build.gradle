@@ -1,0 +1,15 @@
+plugins {
+    id "com.android.application"
+    id "org.jetbrains.kotlin.android"
+}
+
+android {
+    compileSdkVersion 33
+    defaultConfig {
+        applicationId "com.example.control_medidores"
+        minSdkVersion 21
+        targetSdkVersion 33
+        versionCode 1
+        versionName "1.0.0"
+    }
+}
