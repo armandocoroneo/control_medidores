@@ -8,6 +8,7 @@ import com.controlmedidores.app.data.Lectura
 import com.controlmedidores.app.data.Medidor
 import com.controlmedidores.app.data.MedidorRepository
 import com.controlmedidores.app.data.Prorrateo
+import com.controlmedidores.app.notificaciones.NotificacionesHelper
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -24,6 +25,7 @@ class MedidorViewModel(application: Application) : AndroidViewModel(application)
     init {
         val db = AppDatabase.obtenerInstancia(application)
         repositorio = MedidorRepository(db.medidorDao(), db.lecturaDao(), db.prorrateoDao())
+        NotificacionesHelper.crearCanal(application)
     }
 
     val medidores: StateFlow<List<Medidor>> = repositorio.obtenerMedidores()
@@ -55,33 +57,28 @@ class MedidorViewModel(application: Application) : AndroidViewModel(application)
 
     fun crearMedidor(nombre: String) {
         if (nombre.isBlank()) return
-        viewModelScope.launch { repositorio.crearMedidor(nombre.trim()) }
+        viewModelScope.launch {
+            val creado = repositorio.crearMedidor(nombre.trim())
+            programarAlarma(creado)
+        }
     }
 
     fun eliminarMedidor(medidor: Medidor) {
-        viewModelScope.launch { repositorio.eliminarMedidor(medidor) }
-    }
-
-    fun registrarLectura(medidor: Medidor, lecturaNueva: Double, precioPorKw: Double, nota: String?) {
         viewModelScope.launch {
-            repositorio.registrarLectura(medidor, lecturaNueva, precioPorKw, nota)
+            repositorio.eliminarMedidor(medidor)
+            NotificacionesHelper.cancelar(getApplication(), medidor.id)
         }
     }
 
     /**
-     * Calcula el prorrateo (sin guardar) para mostrarlo antes de confirmar.
-     * Devuelve null si falta el promedio diario y no se indicó consumo manual.
+     * Registra la lectura en la fecha real indicada (no siempre "hoy") y
+     * reprograma la alarma del medidor para la nueva próxima fecha.
      */
-    suspend fun calcularProrrateo(
-        medidor: Medidor,
-        dias: Int,
-        precioPorKw: Double,
-        consumoMensualManual: Double?
-    ): Double? {
-        val promedioDiario = repositorio.promedioDiarioConsumo(medidor.id)
-            ?: consumoMensualManual?.div(30.0)
-            ?: return null
-        return promedioDiario * dias
+    fun registrarLectura(medidor: Medidor, lecturaNueva: Double, precioPorKw: Double, nota: String?, fechaLectura: Long) {
+        viewModelScope.launch {
+            val actualizado = repositorio.registrarLectura(medidor, lecturaNueva, precioPorKw, nota, fechaLectura)
+            programarAlarma(actualizado)
+        }
     }
 
     suspend fun obtenerPromedioDiario(medidor: Medidor): Double? {
@@ -92,5 +89,22 @@ class MedidorViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             repositorio.registrarProrrateo(medidorId, dias, precioPorKw, consumoEstimado, nota)
         }
+    }
+
+    /**
+     * Reprograma las alarmas de todos los medidores existentes. Se llama al
+     * abrir la app (por si se instaló una versión nueva con esta función y
+     * ya había medidores creados, o el sistema perdió alguna alarma).
+     */
+    fun sincronizarAlarmas() {
+        viewModelScope.launch {
+            val lista = repositorio.obtenerMedidoresUnaVez()
+            val ahora = System.currentTimeMillis()
+            lista.filter { it.proximaLectura > ahora }.forEach { programarAlarma(it) }
+        }
+    }
+
+    private fun programarAlarma(medidor: Medidor) {
+        NotificacionesHelper.programar(getApplication(), medidor.id, medidor.nombre, medidor.proximaLectura)
     }
 }

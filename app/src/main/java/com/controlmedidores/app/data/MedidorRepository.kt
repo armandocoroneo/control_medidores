@@ -11,20 +11,23 @@ class MedidorRepository(
 ) {
     fun obtenerMedidores(): Flow<List<Medidor>> = medidorDao.obtenerTodos()
 
+    suspend fun obtenerMedidoresUnaVez(): List<Medidor> = medidorDao.obtenerListaUnaVez()
+
     fun obtenerLecturas(medidorId: Long): Flow<List<Lectura>> = lecturaDao.obtenerPorMedidor(medidorId)
 
     fun obtenerProrrateos(medidorId: Long): Flow<List<Prorrateo>> = prorrateoDao.obtenerPorMedidor(medidorId)
 
-    suspend fun crearMedidor(nombre: String) {
+    /** Devuelve el medidor recién creado (con su id) para poder programar su alarma. */
+    suspend fun crearMedidor(nombre: String): Medidor {
         val ahora = System.currentTimeMillis()
-        medidorDao.insertar(
-            Medidor(
-                nombre = nombre,
-                ultimaLectura = 0.0,
-                fechaUltimaLectura = ahora,
-                proximaLectura = sumarUnMes(ahora)
-            )
+        val nuevo = Medidor(
+            nombre = nombre,
+            ultimaLectura = 0.0,
+            fechaUltimaLectura = ahora,
+            proximaLectura = sumarUnMes(ahora)
         )
+        val id = medidorDao.insertar(nuevo)
+        return nuevo.copy(id = id)
     }
 
     suspend fun eliminarMedidor(medidor: Medidor) {
@@ -32,19 +35,22 @@ class MedidorRepository(
     }
 
     /**
-     * Registra una nueva lectura para el medidor indicado.
-     * Comprueba automáticamente la lectura anterior guardada, calcula el
-     * consumo y el costo con el precio por kW ingresado, y actualiza el
-     * medidor con la nueva lectura y la próxima fecha de lectura (un mes después).
+     * Registra una lectura para el medidor indicado, en la fecha real que se
+     * indique (no siempre "hoy" — por ejemplo si la lectura corresponde al
+     * día 5 pero la estás cargando el día 10). Comprueba automáticamente la
+     * lectura anterior guardada, calcula el consumo y el costo con el precio
+     * por kW ingresado, y actualiza el medidor con la nueva lectura y la
+     * próxima fecha de lectura (un mes después de la fecha indicada).
+     * Devuelve el medidor actualizado, para reprogramar su alarma.
      */
     suspend fun registrarLectura(
         medidor: Medidor,
         lecturaNueva: Double,
         precioPorKw: Double,
-        nota: String?
-    ) {
-        val ahora = System.currentTimeMillis()
-        val dias = diasEntre(medidor.fechaUltimaLectura, ahora).coerceAtLeast(1)
+        nota: String?,
+        fechaLectura: Long
+    ): Medidor {
+        val dias = diasEntre(medidor.fechaUltimaLectura, fechaLectura).coerceAtLeast(1)
         val consumo = (lecturaNueva - medidor.ultimaLectura).coerceAtLeast(0.0)
         val costo = consumo * precioPorKw
 
@@ -57,17 +63,17 @@ class MedidorRepository(
                 consumoKw = consumo,
                 costoTotal = costo,
                 dias = dias,
-                fecha = ahora,
+                fecha = fechaLectura,
                 nota = nota
             )
         )
-        medidorDao.actualizar(
-            medidor.copy(
-                ultimaLectura = lecturaNueva,
-                fechaUltimaLectura = ahora,
-                proximaLectura = sumarUnMes(ahora)
-            )
+        val actualizado = medidor.copy(
+            ultimaLectura = lecturaNueva,
+            fechaUltimaLectura = fechaLectura,
+            proximaLectura = sumarUnMes(fechaLectura)
         )
+        medidorDao.actualizar(actualizado)
+        return actualizado
     }
 
     /**
@@ -108,10 +114,15 @@ class MedidorRepository(
         fun diasEntre(desde: Long, hasta: Long): Int =
             TimeUnit.MILLISECONDS.toDays(hasta - desde).toInt()
 
+        /** Suma un mes a la fecha dada y fija la hora a las 9:00 am, para que la alarma suene a una hora razonable. */
         fun sumarUnMes(fechaMillis: Long): Long {
             val cal = Calendar.getInstance()
             cal.timeInMillis = fechaMillis
             cal.add(Calendar.MONTH, 1)
+            cal.set(Calendar.HOUR_OF_DAY, 9)
+            cal.set(Calendar.MINUTE, 0)
+            cal.set(Calendar.SECOND, 0)
+            cal.set(Calendar.MILLISECOND, 0)
             return cal.timeInMillis
         }
     }

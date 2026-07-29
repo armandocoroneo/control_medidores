@@ -8,12 +8,17 @@ de luz con precio de kW variable.
 - Cada medidor tiene un **nombre** (medidor o persona).
 - Al registrar una lectura nueva, la app **muestra automáticamente la última
   lectura guardada** para ese medidor.
-- Pides la **lectura nueva** y el **precio por kW** (varía cada vez).
+- Pides la **lectura nueva**, el **precio por kW** (varía cada vez) y la
+  **fecha real de la lectura** (por defecto hoy, pero puedes elegir otra —
+  por ejemplo si la lectura corresponde al día 5 pero la cargas el día 10).
 - La app calcula el consumo (`nueva - anterior`) y el costo
   (`consumo × precio`), y guarda todo en el historial junto con la fecha.
-- **Recordatorio dentro de la app**: cada medidor calcula automáticamente su
-  próxima fecha de lectura (un mes después de la última). Al abrir la app,
-  si algún medidor ya venció, aparece un aviso arriba con la lista.
+- **Alarma real de recordatorio**: cada medidor calcula automáticamente su
+  próxima fecha de lectura (un mes después de la fecha de la última lectura
+  registrada). La app programa una **notificación de Android** para esa
+  fecha a las 9:00 am — te avisa aunque no tengas la app abierta ("Oye, te
+  toca leer los medidores"). Al tocar la notificación, se abre la app. Si
+  el celular se reinicia, las alarmas se reprograman solas.
 - **Salida anticipada (facturación por días)**: si el inquilino se va antes
   de la lectura mensual, puedes generar un cobro prorrateado. La app calcula
   el promedio diario de consumo a partir del historial (última lectura
@@ -26,12 +31,13 @@ de luz con precio de kW variable.
 
 ```
 app/src/main/java/com/controlmedidores/app/
-  data/         Entidades Room (Medidor, Lectura, Prorrateo), DAOs, base de datos, repositorio
-  viewmodel/    MedidorViewModel (estado y lógica de negocio)
-  ui/screens/   Pantallas Compose (lista con recordatorio, detalle/lectura/prorrateo)
-  ui/theme/     Tema Material 3
+  data/            Entidades Room (Medidor, Lectura, Prorrateo), DAOs, base de datos, repositorio
+  notificaciones/  Alarma y notificación real de Android para el recordatorio de lectura
+  viewmodel/       MedidorViewModel (estado y lógica de negocio)
+  ui/screens/      Pantallas Compose (lista con aviso, detalle/lectura con fecha/prorrateo)
+  ui/theme/        Tema Material 3
   MainActivity.kt
-codemagic.yaml  Configuración de build para Codemagic
+codemagic.yaml     Configuración de build para Codemagic
 ```
 
 ## Todo desde el navegador — sin instalar nada

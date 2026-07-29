@@ -1,8 +1,11 @@
 package com.controlmedidores.app
 
+import android.Manifest
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -20,8 +23,20 @@ class MainActivity : ComponentActivity() {
 
     private val viewModel: MedidorViewModel by viewModels()
 
+    private val solicitarPermisoNotificaciones = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { /* si lo niega, la app sigue funcionando, solo no habrá alarma */ }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            solicitarPermisoNotificaciones.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+
+        // Reprograma las alarmas de todos los medidores existentes al abrir la app.
+        viewModel.sincronizarAlarmas()
+
         setContent {
             ControlMedidoresTheme {
                 AppNavegacion(viewModel)
@@ -60,8 +75,8 @@ fun AppNavegacion(viewModel: MedidorViewModel) {
             prorrateos = prorrateos,
             obtenerPromedioDiario = { viewModel.obtenerPromedioDiario(medidorActualizado) },
             onVolver = { medidorSeleccionado = null },
-            onRegistrarLectura = { nuevaLectura, precioPorKw, nota ->
-                viewModel.registrarLectura(medidorActualizado, nuevaLectura, precioPorKw, nota)
+            onRegistrarLectura = { nuevaLectura, precioPorKw, nota, fechaLectura ->
+                viewModel.registrarLectura(medidorActualizado, nuevaLectura, precioPorKw, nota, fechaLectura)
             },
             onRegistrarProrrateo = { dias, precioPorKw, consumoEstimado, nota ->
                 viewModel.registrarProrrateo(medidorActualizado.id, dias, precioPorKw, consumoEstimado, nota)

@@ -12,6 +12,9 @@ interface MedidorDao {
     @Query("SELECT * FROM medidores ORDER BY nombre ASC")
     fun obtenerTodos(): Flow<List<Medidor>>
 
+    @Query("SELECT * FROM medidores ORDER BY nombre ASC")
+    suspend fun obtenerListaUnaVez(): List<Medidor>
+
     @Query("SELECT * FROM medidores WHERE id = :id")
     suspend fun obtenerPorId(id: Long): Medidor?
 

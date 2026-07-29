@@ -46,6 +46,26 @@ private sealed class ItemHistorial(val fecha: Long) {
     data class DeProrrateo(val prorrateo: Prorrateo) : ItemHistorial(prorrateo.fecha)
 }
 
+/**
+ * El DatePicker de Compose devuelve la fecha elegida como medianoche UTC.
+ * Esta función la convierte al mediodía de ese mismo día calendario pero en
+ * la zona horaria del dispositivo, para que no se corra un día al mostrarla
+ * o compararla con otras fechas guardadas en hora local.
+ */
+private fun fechaPickerALocal(millisUtc: Long): Long {
+    val utc = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC"))
+    utc.timeInMillis = millisUtc
+    val local = java.util.Calendar.getInstance()
+    local.clear()
+    local.set(
+        utc.get(java.util.Calendar.YEAR),
+        utc.get(java.util.Calendar.MONTH),
+        utc.get(java.util.Calendar.DAY_OF_MONTH),
+        12, 0, 0
+    )
+    return local.timeInMillis
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DetalleMedidorScreen(
@@ -54,7 +74,7 @@ fun DetalleMedidorScreen(
     prorrateos: List<Prorrateo>,
     obtenerPromedioDiario: suspend () -> Double?,
     onVolver: () -> Unit,
-    onRegistrarLectura: (nuevaLectura: Double, precioPorKw: Double, nota: String?) -> Unit,
+    onRegistrarLectura: (nuevaLectura: Double, precioPorKw: Double, nota: String?, fechaLectura: Long) -> Unit,
     onRegistrarProrrateo: (dias: Int, precioPorKw: Double, consumoEstimado: Double, nota: String?) -> Unit
 ) {
     var mostrarDialogoLectura by remember { mutableStateOf(false) }
@@ -167,8 +187,8 @@ fun DetalleMedidorScreen(
         DialogoNuevaLectura(
             medidor = medidor,
             onCancelar = { mostrarDialogoLectura = false },
-            onConfirmar = { nueva, precio, nota ->
-                onRegistrarLectura(nueva, precio, nota)
+            onConfirmar = { nueva, precio, nota, fecha ->
+                onRegistrarLectura(nueva, precio, nota, fecha)
                 mostrarDialogoLectura = false
             }
         )
@@ -192,12 +212,15 @@ fun DetalleMedidorScreen(
 private fun DialogoNuevaLectura(
     medidor: Medidor,
     onCancelar: () -> Unit,
-    onConfirmar: (nueva: Double, precio: Double, nota: String?) -> Unit
+    onConfirmar: (nueva: Double, precio: Double, nota: String?, fechaLectura: Long) -> Unit
 ) {
     var lecturaNueva by remember { mutableStateOf("") }
     var precio by remember { mutableStateOf("") }
     var nota by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
+    var mostrarSelectorFecha by remember { mutableStateOf(false) }
+    var fechaSeleccionada by remember { mutableStateOf(System.currentTimeMillis()) }
+    val formatoFecha = remember { SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()) }
 
     AlertDialog(
         onDismissRequest = onCancelar,
@@ -205,6 +228,14 @@ private fun DialogoNuevaLectura(
         text = {
             Column {
                 Text("Lectura anterior: ${medidor.ultimaLectura} kW", style = MaterialTheme.typography.bodyMedium)
+                Spacer(modifier = Modifier.padding(top = 8.dp))
+
+                Text("Fecha de la lectura", style = MaterialTheme.typography.labelMedium)
+                OutlinedButton(
+                    onClick = { mostrarSelectorFecha = true },
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text(formatoFecha.format(Date(fechaSeleccionada))) }
+
                 Spacer(modifier = Modifier.padding(top = 8.dp))
                 OutlinedTextField(
                     value = lecturaNueva,
@@ -237,7 +268,9 @@ private fun DialogoNuevaLectura(
                     nuevaValor == null || precioValor == null -> error = "Ingresa números válidos"
                     nuevaValor < medidor.ultimaLectura -> error =
                         "La lectura nueva no puede ser menor a la anterior (${medidor.ultimaLectura})"
-                    else -> onConfirmar(nuevaValor, precioValor, nota.ifBlank { null })
+                    fechaSeleccionada < medidor.fechaUltimaLectura -> error =
+                        "La fecha no puede ser anterior a la última lectura (${formatoFecha.format(Date(medidor.fechaUltimaLectura))})"
+                    else -> onConfirmar(nuevaValor, precioValor, nota.ifBlank { null }, fechaSeleccionada)
                 }
             }) { Text("Guardar") }
         },
@@ -245,6 +278,26 @@ private fun DialogoNuevaLectura(
             TextButton(onClick = onCancelar) { Text("Cancelar") }
         }
     )
+
+    if (mostrarSelectorFecha) {
+        val estadoSelector = androidx.compose.material3.rememberDatePickerState(
+            initialSelectedDateMillis = fechaSeleccionada
+        )
+        androidx.compose.material3.DatePickerDialog(
+            onDismissRequest = { mostrarSelectorFecha = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    estadoSelector.selectedDateMillis?.let { fechaSeleccionada = fechaPickerALocal(it) }
+                    mostrarSelectorFecha = false
+                }) { Text("Aceptar") }
+            },
+            dismissButton = {
+                TextButton(onClick = { mostrarSelectorFecha = false }) { Text("Cancelar") }
+            }
+        ) {
+            androidx.compose.material3.DatePicker(state = estadoSelector)
+        }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
